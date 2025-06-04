@@ -1,0 +1,127 @@
+version: '3'
+
+services:
+  # Database Services
+  postgres:
+    image: postgres:16-alpine
+    container_name: marineai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: marineai
+      POSTGRES_PASSWORD: marineai_password
+      POSTGRES_DB: marineai_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    container_name: marineai-redis
+    restart: unless-stopped
+    command: redis-server --requirepass marineai_redis
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+
+  weaviate:
+    image: semitechnologies/weaviate:1.21.2
+    container_name: marineai-weaviate
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+      DEFAULT_VECTORIZER_MODULE: 'none'
+      ENABLE_MODULES: ''
+      CLUSTER_HOSTNAME: 'node1'
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+
+  minio:
+    image: minio/minio:latest
+    container_name: marineai-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: marineai
+      MINIO_ROOT_PASSWORD: marineai_password
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"  # API
+      - "9001:9001"  # Console
+
+  # Application Services
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: marineai-frontend
+    restart: unless-stopped
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:4000
+      - VITE_MINIO_URL=http://localhost:9000
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: marineai-backend
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app
+      - backend_node_modules:/app/node_modules
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=development
+      - PORT=4000
+      - DATABASE_URL=postgresql://marineai:marineai_password@postgres:5432/marineai_db
+      - REDIS_URL=redis://:marineai_redis@redis:6379
+      - JWT_SECRET=super_secret_jwt_key_for_development
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=marineai
+      - S3_SECRET_KEY=marineai_password
+      - S3_BUCKET_NAME=marineai-files
+      - AI_SERVICE_URL=http://ai-service:8000
+
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile.dev
+    container_name: marineai-ai-service
+    restart: unless-stopped
+    volumes:
+      - ./ai-service:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=development
+      - LOG_LEVEL=debug
+      - DATABASE_URL=postgresql://marineai:marineai_password@postgres:5432/marineai_db
+      - REDIS_URL=redis://:marineai_redis@redis:6379
+      - WEAVIATE_URL=http://weaviate:8080
+      - OPENAI_API_KEY=your_openai_api_key
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=marineai
+      - S3_SECRET_KEY=marineai_password
+      - S3_BUCKET_NAME=marineai-files
+
+volumes:
+  postgres_data:
+  redis_data:
+  weaviate_data:
+  minio_data:
+  frontend_node_modules:
+  backend_node_modules:

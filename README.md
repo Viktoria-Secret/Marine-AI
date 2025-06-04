@@ -1,180 +1,125 @@
-# MarineAI – Architecture & Implementation Plan  
-_Comprehensive guide for building an AI-powered vessel-manual system_
+# MarineAI
 
----
+AI-powered vessel-manual platform that turns thousands of pages of PDF documentation into an interactive, searchable knowledge system for crews, engineers, and fleet managers.
 
-## 1. Technical Plan (Macro-Architecture)
+## 1&nbsp;· Mission Statement
+Deliver safer, greener and more efficient voyages by giving every seafarer instant, reliable answers straight from the vessel’s technical manuals—anytime, anywhere.
 
-| Layer | Component | Tech Choices | Purpose |
-|-------|-----------|--------------|---------|
-| **UI / Frontend** | SPA | **React + TypeScript**, Vite, Tailwind CSS | Responsive web app, state management via Zustand/Redux |
-|                  | PDF Viewer | `@react-pdf-viewer/core` | In-browser manual reading; supports thumbnails, search, annotations |
-| **API Gateway**  | REST/GraphQL edge | **NestJS (Node 18+)** | Auth, routing, request validation, rate-limiting |
-| **Core Services (backend)** | User/Vessel/Manual Service | NestJS modules, PostgreSQL via TypeORM | CRUD for domain data |
-|                  | Auth Service | JWT (access/refresh) + **OAuth2 / OIDC** option | Password or SSO login; RBAC (“admin”, “engineer”) |
-|                  | File Service | Direct S3 pre-signed uploads, virus scan (ClamAV) | Stores PDFs, thumbnails, OCR text |
-|                  | AI Service | Python 3.11 + FastAPI | Handles ingestion, OCR, embedding, retrieval, OpenAI calls |
-| **Data Stores**  | Relational DB | **PostgreSQL 16** | Users, metadata, chat history |
-|                  | Vector DB | **Weaviate (open-source) OR Pinecone (managed)** | Stores embeddings for semantic search |
-|                  | Cache / Queue | Redis | Short-term chat context, task queues (RQ/BullMQ) |
-|                  | Object Storage | AWS S3 / MinIO | Raw PDFs, processed text, derived artifacts |
-| **DevOps**       | Containerization | Docker & docker-compose, Helm charts | Local dev & k8s deployment |
-|                  | CI/CD | GitHub Actions → staging → prod | Test, lint, scan, deploy |
-|                  | Monitoring | Prometheus + Grafana, Loki logs | Health checks, latency, cost alerts |
+## 2&nbsp;· Key Features
+| Category | Capabilities |
+|----------|--------------|
+| Smart Search & Chat | Natural-language Q&A with citations to exact manual pages |
+| Document Ingestion | Drag-and-drop PDFs, automatic OCR, chunking, vector indexing |
+| Multi-Vessel Workspace | Manage manuals per vessel, fleet or organisation |
+| Role-Based Access | JWT / OAuth2, RBAC (admin, engineer, viewer) |
+| Offline Mode | PWA caching for low-bandwidth situations |
+| Usage Analytics | Prometheus metrics, token-cost dashboards |
+| Droid-Powered Dev | Code/Test/Doc/DevOps droids automate repetitive tasks |
 
----
+## 3&nbsp;· Technology & Architecture
+* **Frontend** – React + TypeScript, Vite, Tailwind  
+* **API Gateway** – NestJS (Node 18), REST/GraphQL  
+* **AI Service** – FastAPI (Python 3.11), OpenAI, Weaviate vector DB  
+* **Data Stores** – PostgreSQL 16, Redis, MinIO (S3)  
+* **Messaging / Queues** – BullMQ, RQ  
+* **DevOps** – Docker, GitHub Actions CI/CD, Helm on EKS  
+* **Observability** – Prometheus, Grafana, Loki  
 
-## 2. Detailed API Plan
+Macro-architecture layers:
 
-### Authentication (`/api/auth`)
-| Method | Path | Body / Params | Description |
-|--------|------|---------------|-------------|
-| POST | `/register` | `{email, password, name}` | Create account |
-| POST | `/login` | `{email, password}` | Issue JWTs |
-| POST | `/logout` | — | Invalidate refresh token |
-| GET  | `/me` | header Auth | Return profile |
-| POST | `/refresh` | `{refreshToken}` | Rotate tokens |
-
-### Vessels (`/api/vessels`)
-| Method | Path | Body | Notes |
-|--------|------|------|-------|
-| GET | `/` | — | List vessels (user scope) |
-| POST | `/` | `{name, imo?}` | Create vessel |
-| GET | `/:id` | — | Details incl. manual count |
-| PUT | `/:id` | `{...}` | Update |
-| DELETE | `/:id` | — | Soft delete |
-
-### Manuals (`/api/vessels/:vesselId/manuals`)
-| Method | Path | Body / Query | Purpose |
-|--------|------|-------------|---------|
-| GET | `/` | `?q=search` | List / search |
-| POST | `/` | multipart form | Initiate upload (meta) |
-| PUT  | `/:mid/complete` | `{s3Key}` | Mark upload done → triggers processing |
-| GET  | `/:mid` | — | Metadata, processing status |
-| DELETE | `/:mid` | — | Remove manual |
-| GET  | `/:mid/file` | — | Pre-signed download URL |
-
-### AI Assistant (`/api/ai`)
-| Method | Path | Body | Description |
-|--------|------|------|-------------|
-| POST | `/query` | `{vesselId, message, historyId?}` | Returns `{answer, citations:[{manualId,page}...]}` |
-| GET  | `/history/:id` | — | Retrieve past convo |
-| DELETE | `/history/:id` | — | Remove |
-
-### Internal Webhooks / Events
-- `POST /internal/webhook/manual-processed` – AI service notifies API when OCR/embeddings complete.
-- Message queue events: `manual.ingested`, `chat.request`, etc.
-
----
-
-## 3. AI Integration Scenarios
-
-### 3.1 Ingestion Pipeline
-1. **Upload completed** → File Service emits event.
-2. **OCR & Text Extraction**
-   - If PDF contains text layer → extract via **pdfplumber**.
-   - Else run **OCRmyPDF** (Tesseract, 300 dpi upscale, deskew, noise removal).
-3. **Chunking & Embedding**
-   - Adaptive chunk size 500–800 tokens.
-   - Embeddings via `text-embedding-3-large`.
-4. **Vector Store Write** with metadata `{manualId, page, chunkIndex}`.
-5. **Quality Metrics**: pages with low OCR confidence flagged for manual review.
-
-### 3.2 Retrieval-Augmented QA
 ```
-User query → embed → top-k vector search (filter vesselId) → 
-context assembly (max 6 chunks, dedup pages) → 
-LLM call (GPT-4o, system prompt instructs citations) → 
-post-process to attach links/pages → deliver.
+SPA ↔ API Gateway ↔ Core Services ─┬─ PostgreSQL
+                                   ├─ S3 / MinIO
+                                   ├─ Redis
+                                   └─ AI Service ↔ Weaviate ↔ OpenAI
 ```
 
-### 3.3 Conversation Management
-- Chat history kept in PostgreSQL; last **N** messages cached in Redis for quick context.
-- Follow-up questions reuse conversation id; LLM receives previous Q&A trimmed to 8 k tokens.
+## 4&nbsp;· Quick Start
 
-### 3.4 Reliability & Cost Controls
-- Automatic fallback to shorter model (GPT-3.5-Turbo) if context small.
-- Monthly token usage quotas per tenant.
-- Streaming responses for low latency.
+### Prerequisites
+* Docker ≥ 20.10 & Docker Compose ≥ 2  
+* Node ≥ 18, npm ≥ 8 (for local dev)  
+* Python ≥ 3.11 (for AI-service hacking)
+
+### One-liner
+```bash
+# clone & launch
+git clone https://github.com/Viktoria-Secret/Marine-AI.git
+cd Marine-AI
+make dev          # builds images & starts all services
+```
+
+### Manual Steps
+1. `cp .env.example .env` – edit secrets if needed  
+2. `docker-compose up -d --build` – backend, frontend, dbs, AI service  
+3. Browse:
+   * http://localhost:3000 – UI  
+   * http://localhost:4000/api/docs – Swagger  
+   * http://localhost:8000/docs – AI service docs  
+   * http://localhost:9001 – MinIO console  
+
+## 5&nbsp;· Development Workflow (Droid-Driven)
+
+| Stage | Human Role | Droid Role |
+|-------|------------|-----------|
+| Plan  | write issue → `/droid plan` | splits tasks, generates ADR & UML |
+| Code  | prompt in IDE | Code Droid scaffolds Nest module, React hook |
+| Test  | approve specs | Test Droid writes Jest/Playwright & Pytest |
+| Review| eyeball logic | Review Droid runs ESLint, CodeQL, Bandit |
+| Docs  | tweak phrasing| Doc Droid updates OpenAPI, Storybook, MkDocs |
+| DevOps| merge PR      | DevOps Droid bumps Helm, pushes images, deploys |
+
+All droid activity (prompt, diff, CI logs) is traceable for audit.
+
+## 6&nbsp;· API Documentation
+
+* **Gateway Swagger** – `/api/docs`  
+* **GraphQL** – `/api/graphql` (playground enabled in dev)  
+* **AI Service** – `/docs` (FastAPI Swagger)  
+
+OpenAPI JSON is auto-generated on each build and published to `docs/` site.
+
+## 7&nbsp;· Deployment
+
+| Environment | Command | URL |
+|-------------|---------|-----|
+| Local k8s (kind) | `make k8s-apply ENV=local` | http://marineai.local |
+| Staging (EKS) | Git push to `develop` → GitHub Actions → ArgoCD | `staging.marineai.example.com` |
+| Production    | GitHub Release or `/deploy production` ChatOps | `app.marineai.example.com` |
+
+Helm charts live in `k8s/`.  Images are published to GHCR with semantic tags and `sha-<commit>` digests.
+
+## 8&nbsp;· Contributing
+
+1. Fork & create a feature branch.  
+2. Run `make ci-check` locally (lint, test).  
+3. Commit using Conventional Commits.  
+4. Open a PR – Review Droid will comment; keep CI green.  
+5. One approval + passing checks → merge.  
+
+Please read `CODE_OF_CONDUCT.md` before contributing.
+
+## 9&nbsp;· Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| `docker-compose up` hangs at ai-service | Ensure ≥ 4 GB RAM free; check proxy blocking OpenAI |
+| 500 from `/api/ai/query` | Verify `OPENAI_API_KEY` in `.env`; tail `ai-service` logs |
+| Stuck `processing` status | `docker-compose exec weaviate sh -c 'rm -rf /var/lib/weaviate/*'` then re-ingest |
+| Frontend CORS errors | `VITE_API_URL` & `CORS_ORIGIN` mismatch – align in `.env` |
+| Tests are slow | `npm run test:watch` uses in-memory db; ensure Redis not in `appendonly` mode |
+
+## 10&nbsp;· Roadmap
+
+| Phase | Highlights | ETA |
+|-------|------------|-----|
+| 2 – AI Upgrade (current) | OCR pipeline, vector RAG w/ citations | Q3 2025 |
+| 3 – Quality & Ops | Low-quality scan review, cost dashboards | Q4 2025 |
+| 4 – Collaboration | Annotations, shareable links, offline packs | Q1 2026 |
+| 5 – Autopilot | On-device voice assistant, predictive maintenance insights | 2026+ |
+
+See `ROADMAP.md` for granular issues and progress tracking.
 
 ---
 
-## 4. File Storage & Management Recommendations
-
-| Aspect | Recommendation |
-|--------|----------------|
-| **Structure** | `/{vesselId}/{manualId}/{original.pdf}`; derived `ocr.txt`, `thumb.jpg` |
-| **Retention** | Version each re-upload; soft delete with 30-day restore |
-| **Security** | S3 server-side encryption (SSE-S3/AES-256); pre-signed URLs, no public buckets |
-| **Validation** | Content-type whitelist, max 50 MB per file, ClamAV scan |
-| **Backups** | Daily incremental S3 → Glacier; DB WAL shipping |
-| **Performance** | Generate 150 px thumbnails for list views; CloudFront CDN for downloads |
-| **Compliance** | Keep audit log of who accessed which manual (required by many fleets) |
-
-Handling Bad Scans:
-- Pre-processing: unsharp mask, binarization, de-speckle before OCR.
-- Confidence score < 85 % ⇒ flag record; UI badge “low quality”.
-- Allow manual upload of corrected PDF to replace.
-
----
-
-## 5. Development & Migration Phases
-
-### Phase 0 – Setup (1 week)
-- Repo, lint, CI/CD skeleton  
-- Docker baseline, staging env
-
-### Phase 1 – MVP (4 weeks)
-1. Auth (JWT), vessel & manual CRUD
-2. S3 uploads, basic PDF viewer
-3. AI Service v0: extract text only, simple search+GPT answer (no vector DB)
-
-### Phase 2 – AI Upgrade (3 weeks)
-- Integrate OCR pipeline
-- Vector DB, embeddings, RAG answers with citations
-- Chat UI with history
-
-### Phase 3 – Quality & Ops (3 weeks)
-- Low-quality scan handling, manual review queue
-- Cost monitoring, usage dashboards
-- Role-based access, audit logs
-
-### Phase 4 – Expansion (ongoing)
-- Multi-vessel, multi-fleet tenancy
-- Mobile-first PWA
-- Collaboration features: annotations, shared links
-- Offline packs (service-worker cached PDFs)
-
----
-
-## 6. Risk & Mitigation
-
-| Risk | Mitigation |
-|------|------------|
-| OCR failures on degraded scans | manual flag & review workflow |
-| LLM hallucinations | strict RAG with max-similarity threshold, citations enforced |
-| Token cost overrun | per-user quotas, model downgrades |
-| Data breach | WAF, IAM least privilege, regular pen-tests |
-
----
-
-## 7. Team & Roles
-
-- Product Owner (maritime SME)  
-- Tech Lead / Architect  
-- Frontend Dev (2)  
-- Backend Dev (2)  
-- AI/ML Engineer  
-- DevOps / SRE  
-
----
-
-### Appendix: Suggested Open-Source Libraries
-- `ocrmypdf`, `pdfplumber`, `PyMuPDF`
-- `langchain`, `weaviate-client`, `openai`
-- `nestjs`, `class-validator`
-- `react-query`, `zustand`
-
----
-
-_End of document_
+© 2025 MarineAI Project – Built with ❤️ & robots 🤖
