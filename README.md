@@ -51,7 +51,8 @@ make dev          # builds images & starts all services
 
 ### Manual Steps
 1. `cp .env.example .env` – edit secrets if needed  
-2. `docker-compose up -d --build` – backend, frontend, dbs, AI service  
+2. `docker-compose up -d --build` – backend, frontend, dbs, AI service
+   *(uses `network_mode: host` to avoid iptables issues – ensure ports are free)*
 3. Browse:
    * http://localhost:3000 – UI  
    * http://localhost:4000/api/docs – Swagger  
