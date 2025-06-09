@@ -22,8 +22,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-    networks:
-      - marineai-network
+    network_mode: host
 
   redis:
     image: redis:7-alpine
@@ -39,8 +38,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-    networks:
-      - marineai-network
+    network_mode: host
 
   weaviate:
     image: semitechnologies/weaviate:1.21.2
@@ -63,8 +61,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    networks:
-      - marineai-network
+    network_mode: host
 
   minio:
     image: minio/minio:latest
@@ -84,8 +81,7 @@ services:
       interval: 30s
       timeout: 20s
       retries: 3
-    networks:
-      - marineai-network
+    network_mode: host
 
   # Application Services
   frontend:
@@ -105,8 +101,7 @@ services:
       - VITE_MINIO_URL=http://localhost:9000
     depends_on:
       - backend
-    networks:
-      - marineai-network
+    network_mode: host
 
   backend:
     build:
@@ -145,8 +140,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    networks:
-      - marineai-network
+    network_mode: host
 
   ai-service:
     build:
@@ -185,8 +179,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    networks:
-      - marineai-network
+    network_mode: host
 
   # Setup service - runs once to initialize buckets, etc.
   minio-setup:
@@ -203,12 +196,7 @@ services:
       /usr/bin/mc policy set download myminio/marineai-files;
       exit 0;
       "
-    networks:
-      - marineai-network
-
-networks:
-  marineai-network:
-    driver: bridge
+    network_mode: host
 
 volumes:
   postgres_data:

@@ -28,8 +28,8 @@ ENV TZ=UTC
 # Copy package.json and package-lock.json first for better caching
 COPY package*.json ./
 
-# Install dependencies with npm install instead of npm ci to avoid requiring package-lock.json
-RUN npm install
+# Install dependencies using the exact versions from package-lock.json
+RUN npm ci
 
 # Copy the rest of the application code
 # Note: In dev mode, this will typically be overridden by a volume mount
