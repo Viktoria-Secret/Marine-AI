@@ -6,6 +6,7 @@ services:
     image: postgres:16-alpine
     container_name: marineai-postgres
     restart: unless-stopped
+    network_mode: host
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-marineai}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-marineai_password}
@@ -29,6 +30,7 @@ services:
     image: redis:7-alpine
     container_name: marineai-redis
     restart: unless-stopped
+    network_mode: host
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-marineai_redis}
     volumes:
       - redis_data:/data
@@ -46,6 +48,7 @@ services:
     image: semitechnologies/weaviate:1.21.2
     container_name: marineai-weaviate
     restart: unless-stopped
+    network_mode: host
     ports:
       - "8080:8080"
     environment:
@@ -70,6 +73,7 @@ services:
     image: minio/minio:latest
     container_name: marineai-minio
     restart: unless-stopped
+    network_mode: host
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-marineai}
@@ -94,6 +98,7 @@ services:
       dockerfile: Dockerfile.dev
     container_name: marineai-frontend
     restart: unless-stopped
+    network_mode: host
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -114,6 +119,7 @@ services:
       dockerfile: Dockerfile.dev
     container_name: marineai-backend
     restart: unless-stopped
+    network_mode: host
     volumes:
       - ./backend:/app
       - /app/node_modules
@@ -154,6 +160,7 @@ services:
       dockerfile: Dockerfile.dev
     container_name: marineai-ai-service
     restart: unless-stopped
+    network_mode: host
     volumes:
       - ./ai-service:/app
     ports:
@@ -195,6 +202,7 @@ services:
     depends_on:
       minio:
         condition: service_healthy
+    network_mode: host
     entrypoint: >
       /bin/sh -c "
       sleep 5;
