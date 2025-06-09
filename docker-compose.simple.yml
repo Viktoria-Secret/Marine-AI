@@ -6,6 +6,7 @@ services:
     image: postgres:16-alpine
     container_name: marineai-postgres
     restart: unless-stopped
+    network_mode: host
     environment:
       POSTGRES_USER: marineai
       POSTGRES_PASSWORD: marineai_password
@@ -24,11 +25,13 @@ services:
       - redis_data:/data
     ports:
       - "6379:6379"
+    network_mode: host
 
   weaviate:
     image: semitechnologies/weaviate:1.21.2
     container_name: marineai-weaviate
     restart: unless-stopped
+    network_mode: host
     ports:
       - "8080:8080"
     environment:
@@ -54,6 +57,7 @@ services:
     ports:
       - "9000:9000"  # API
       - "9001:9001"  # Console
+    network_mode: host
 
   # Application Services
   frontend:
@@ -71,6 +75,7 @@ services:
       - NODE_ENV=development
       - VITE_API_URL=http://localhost:4000
       - VITE_MINIO_URL=http://localhost:9000
+    network_mode: host
 
   backend:
     build:
@@ -94,6 +99,7 @@ services:
       - S3_SECRET_KEY=marineai_password
       - S3_BUCKET_NAME=marineai-files
       - AI_SERVICE_URL=http://ai-service:8000
+    network_mode: host
 
   ai-service:
     build:
@@ -117,6 +123,7 @@ services:
       - S3_ACCESS_KEY=marineai
       - S3_SECRET_KEY=marineai_password
       - S3_BUCKET_NAME=marineai-files
+    network_mode: host
 
 volumes:
   postgres_data:
