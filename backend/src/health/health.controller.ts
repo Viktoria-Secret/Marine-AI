@@ -280,7 +280,7 @@ export class HealthController {
   }
 
   /**
-   * Live readiness probe for Kubernetes
+   * Liveness probe for Kubernetes
    */
   @Get('live')
   @Public()
